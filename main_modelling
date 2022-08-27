@@ -1,0 +1,194 @@
+install.packages("ctv") 
+install.packages("psych") 
+install.packages("zoo") 
+install.packages("xlsx")
+install.packages("XLConnect")
+install.packages("stargazer")
+library(dplyr)
+library(readxl)
+library(plm)
+library("psych")
+library(zoo)
+library(xlsx)
+library(stargazer)
+
+Lijp <- read.csv("http://andy.egge.rs/data/L.csv")
+View(Lijp)
+
+#loading the QoG time-series data
+qog_ts <- read.csv("http://www.qogdata.pol.gu.se/data/qog_std_ts_jan19.csv")
+
+#Create a vector that identifies instances of breaking the 20 year of democracy criterion | is.na(fh_ipolity2)
+criterion_break_full <- subset(qog_ts, ((year>1998 & year != 2019) & (fh_ipolity2 <= 5  | gle_pop <= 0.25)))
+criterion_break <- criterion_break_full[,"cname"]
+criterion_break_codes <- criterion_break_full[,"ccodealp"]
+criterion_break <- unique(criterion_break)
+criterion_break_codes <- unique(criterion_break_codes)
+View(criterion_break)
+View(qog_ts)
+#Identifying my sample
+qog_ts_dem <- subset(qog_ts, year>1998 & year != 2019)
+
+#qog_ts_dem <- filter(qog_ts_dem, !(is.element("ccodealp", criterion_break_codes)))
+qog_ts_dem <- subset(qog_ts_dem, !(is.element(qog_ts_dem$ccodealp, criterion_break_codes)))
+View(qog_ts_dem)
+
+ts_reduced <- qog_ts_dem[, c(
+  "ccode",
+  "cname",
+  "ccodealp",
+  "year",
+  "gol_enpp",
+  "dpi_gpvs1",
+  "dpi_pr",
+  "dpi_plurality",
+  "gtm_pr",
+  "iaep_es",
+  "dpi_gf",
+  "iaep_lcre",
+  "iaep_lvp"
+)]
+
+write.csv(ts_reduced,"exec.csv")
+
+#loading QoG cross-sectional data
+qog_cs <- read.csv("http://www.qogdata.pol.gu.se/dataarchive/qog_std_cs_jan19.csv")
+#qog_cs <- subset(qog_ts, year>1998 & year != 2019)
+qog_cs <- subset(qog_cs, !(is.element(qog_cs$ccodealp, criterion_break_codes)))
+View(qog_cs)
+
+#loading the QoG expert survey (2015) data
+qog_expert <- read.csv("http://www.qogdata.pol.gu.se/data/qog_exp_agg_15.csv")
+#qog_expert <- filter(qog_expert, !(is.element(cname, criterion_break)))
+#qog_expert <- filter(qog_expert, is.element("ccodealp", qog_cs$ccodealp))
+qog_expert <- subset(qog_expert, !(is.element(qog_expert$ccodealp, criterion_break_codes)))
+
+index_professionalism = "proff"
+index_impartiality = "impar"
+index_closedness = "closed"
+expert_reduced <- qog_expert[, c(
+  "ccode",
+  "cname",
+  "ccodealp",
+  index_professionalism,
+  index_impartiality,
+  index_closedness
+)]
+View(qog_expert)
+
+#loading WGI data
+wgi_data <- read_excel("Desktop/Q-Step/wgi_data.xlsx")
+wgi_data <- data.frame(wgi_data)
+#wgi_data <- filter(wgi_data, !(is.element(ccodealp, criterion_break_codes)))
+wgi_data <- filter(wgi_data, is.element(ccodealp, qog_cs$ccodealp))
+View(wgi_data)
+
+
+
+controls <- c("undp_hdi", "pwt_pop")
+corruption_pi <- "ti_cpi"
+
+
+qog_reduced <- qog_cs[, c(
+  "ccode",
+  "cname",
+  "ccodealp",
+  corruption_pi,
+  controls,
+)]
+View(qog_reduced)
+
+qog_combo <- merge(qog_reduced, wgi_data, by=c("ccodealp"))
+View(qog_combo)
+
+
+write.csv(qog_combo,"qog_combo.csv")
+
+View(exec_parties)
+ep <- principal(exec_parties, nfactors = 1, rotate="none", scores = T)
+View(ep)
+qog_combo$ep <- ep$scores
+
+screeplot(princomp(!is.na(exec_parties)))
+scree(!(is.na(exec_parties)))
+
+qog_combo_expert <- merge(qog_combo, expert_reduced, by= "ccodealp")
+
+
+  
+epd <- read_excel("epd.xlsx")
+epd_bits <- read_excel("EPDone.xlsx")
+epd_bits1 <- epd_bits[,c("2party","PR","GF","ExDom","EP")]
+epd_comps <- epd_bits[,c("2party","PR","GF","ExDom")]
+epd_bits3 <- epd_bits[,c("gol_enpp","dpi_pr","dpi_gf","ExDom")]
+screeplot(princomp((epd_bits1)))
+screeplot(princomp((epd_comps)))
+screeplot(princomp(!is.na((epd_bits3))))
+summary(alpha(scale(epd_bits), keys=c("2party")))
+View(epd_bits)
+
+controls <- c("undp_hdi", "pwt_pop")
+corruption_pi <- "ti_cpi"
+pop = "pwt_pop"
+hdi = "undp_hdi"
+
+qog_reduced <- qog_cs[, c(
+  "ccode",
+  "cname",
+  "ccodealp",
+  corruption_pi,
+  controls
+)]
+
+qog_combo <- merge(epd, qog_reduced, by=c("cname"))
+qog_combo_wgi <- merge(qog_combo, wgi_data, by=c("cname"))
+qog_combo_expert <- merge(qog_combo, expert_reduced, by=c("cname"))
+View(qog_combo_wgi)
+View(qog_combo_expert)
+View(qog_combo)
+hist(qog_combo_expert$EPD)
+
+#Let the regression begin
+Model1 = lm(impar ~ EPD + log(pwt_pop) + undp_hdi, qog_combo_expert)
+summary(Model1)
+
+plot(impar ~ EPD, qog_combo_expert)
+abline(lm(impar ~ EPD,data=qog_combo_expert), col="blue",  lwd=3)
+
+Model2 = lm(proff ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_expert)
+summary(Model2)
+
+Model3 = lm(ti_cpi ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo)
+summary(Model3)
+
+stargazer(Model1,Model2)
+
+stargazer(Model3,type="text")
+
+
+Model4 = lm(Government.Effectiveness ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model4)
+Model5 = lm(Control.of.Corruption ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model5)
+Model6 = lm(Rule.of.Law ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model6)
+Model7 = lm(Regulatory.Quality..Estimate ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model7)
+Model8 = lm(Political.Stability.and.Absence.of.Violence.Terrorism ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model8)
+Model9 = lm(Voice.and.Accountability ~ EPD + log(pwt_pop) + undp_hdi, data=qog_combo_wgi)
+summary(Model9)
+
+stargazer(Model4,Model5,Model6)
+stargazer(Model7,Model8,Model9)
+#Government.Effectiveness
+#Control.of.Corruption
+#Rule.of.Law
+#Regulatory.Quality..Estimate
+#Political.Stability.and.Absence.of.Violence.Terrorism
+#Voice.and.Accountability
+
+plot(data$Disproportionality,  data$Turnout,
+     xlab="Disproportionality",ylab="Turnout") # gives axis labels
+text(data$Disproportionality,data$Turnout, labels = data$country, cex = 0.7) # provides country labels
+abline(lm(data$Turnout ~ data$Disproportionality), col="blue",  lwd=3)
