@@ -1,0 +1,32 @@
+corona <- read_excel("covid-data.xlsx")
+View(corona)
+corona <- corona[,c("iso_code",
+                    "location",
+                    "date",
+                    "total_cases_per_million",
+                    "total_deaths_per_million",
+                    "gdp_per_capita",
+                    "median_age"
+                    )]
+corona <- subset(corona, date == "2020-05-11")
+names(corona)[1] <- "ccodealp.x"
+
+qog_corona <- merge(qog_combo, corona, by=c("ccodealp.x"))
+View(qog_corona)
+
+Model10 = lm(total_cases_per_million ~ EPD +gdp_per_capita, qog_corona)
+summary(Model10)
+
+Model11 = lm(total_deaths_per_million ~ EPD +undp_hdi+median_age, qog_corona)
+summary(Model11)
+
+Model12 = lm(total_deaths_per_million ~ EPD , qog_corona)
+summary(Model12)
+
+stargazer(Model10,Model11)
+
+plot(total_deaths_per_million ~ EPD, qog_corona)
+abline(lm(total_deaths_per_million ~ EPD,data=qog_corona), col="blue",  lwd=3)
+
+plot(total_cases_per_million ~ EPD, qog_corona)
+abline(lm(total_cases_per_million ~ EPD,data=qog_corona), col="blue",  lwd=3)
